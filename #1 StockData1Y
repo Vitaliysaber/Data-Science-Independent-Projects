@@ -1,0 +1,109 @@
+--KEY STATISTICS:
+SELECT symbol, ROUND(MAX(price), 2) AS maxp, ROUND(MIN(price), 2) AS minp, ROUND(AVG(price), 2) AS avgp,  MAX(volume) AS maxv, MIN(volume) AS minv, AVG(volume) AS avgv FROM multi
+GROUP BY symbol;
+
+
+--SELECT count of day of week per stocks where price > avg price
+WITH avg AS 
+(SELECT * FROM coinbase LEFT JOIN (SELECT ROUND(AVG(price), 2) AS avg FROM coinbase) AS avg
+UNION SELECT * FROM marathon LEFT JOIN (SELECT ROUND(AVG(price), 2) AS avg FROM marathon) AS avg
+UNION SELECT * FROM microstrategy LEFT JOIN (SELECT ROUND(AVG(price), 2) AS avg FROM microstrategy) AS avg
+UNION SELECT * FROM riotplatforms LEFT JOIN (SELECT ROUND(AVG(price), 2) AS avg FROM riotplatforms) AS avg
+UNION SELECT * FROM square LEFT JOIN (SELECT ROUND(AVG(price), 2) AS avg FROM square) AS avg)
+SELECT symbol, name, STRFTIME('%u', datetime) AS dayweek, COUNT(ROUND(price, 2))
+FROM avg
+WHERE price > avg
+GROUP BY 1, 3;
+
+
+--SELECT count of day of week per stocks where volume > avg volume
+WITH avg AS 
+(SELECT * FROM coinbase LEFT JOIN (SELECT AVG(volume) AS avg FROM coinbase) AS avg
+UNION SELECT * FROM marathon LEFT JOIN (SELECT AVG(volume) AS avg FROM marathon) AS avg
+UNION SELECT * FROM microstrategy LEFT JOIN (SELECT AVG(volume) AS avg FROM microstrategy) AS avg
+UNION SELECT * FROM riotplatforms LEFT JOIN (SELECT AVG(volume) AS avg FROM riotplatforms) AS avg
+UNION SELECT * FROM square LEFT JOIN (SELECT AVG(volume) AS avg FROM square) AS avg)
+SELECT symbol, name, STRFTIME('%u', datetime) AS dayweek, COUNT(volume)
+FROM avg
+WHERE volume > avg
+GROUP BY 1, 3;
+
+
+--SELECT count of days of week where price and volume > their avg
+WITH avg AS 
+(SELECT * FROM coinbase LEFT JOIN (SELECT ROUND(AVG(price), 2) AS avgp, AVG(volume) AS avgv FROM coinbase) AS avgp
+UNION SELECT * FROM marathon LEFT JOIN (SELECT ROUND(AVG(price), 2) AS avgp, AVG(volume) AS avgv FROM marathon) AS avgp
+UNION SELECT * FROM microstrategy LEFT JOIN (SELECT ROUND(AVG(price), 2) AS avgp, AVG(volume) AS avgv FROM microstrategy) AS avgp
+UNION SELECT * FROM riotplatforms LEFT JOIN (SELECT ROUND(AVG(price), 2) AS avgp, AVG(volume) AS avgv FROM riotplatforms) AS avgp
+UNION SELECT * FROM square LEFT JOIN (SELECT ROUND(AVG(price), 2) AS avgp, AVG(volume) AS avgv FROM square) AS avgp)
+SELECT STRFTIME('%u', datetime) AS dayweek, COUNT(*) AS '>avg'
+FROM avg
+WHERE price > avgp AND volume > avgv
+GROUP BY 1;
+
+
+--SELECT stocks and their avg volumes per day of week 
+WITH avg AS 
+(SELECT * FROM coinbase LEFT JOIN (SELECT AVG(volume) AS avg FROM coinbase) AS avg
+UNION SELECT * FROM marathon LEFT JOIN (SELECT AVG(volume) AS avg FROM marathon) AS avg
+UNION SELECT * FROM microstrategy LEFT JOIN (SELECT AVG(volume) AS avg FROM microstrategy) AS avg
+UNION SELECT * FROM riotplatforms LEFT JOIN (SELECT AVG(volume) AS avg FROM riotplatforms) AS avg
+UNION SELECT * FROM square LEFT JOIN (SELECT AVG(volume) AS avg FROM square) AS avg)
+SELECT symbol, STRFTIME('%u', datetime) AS dayweek, ROUND(AVG(volume)) AS avg_volume
+FROM avg
+GROUP BY 1, 2
+ORDER BY 3 DESC;
+
+
+--KEY STATISTICS + variance
+SELECT keystat.*, multi.symbol, ROUND(AVG((multi.price - keystat.avgp) * (multi.price - keystat.avgp)), 2) AS var
+FROM multi
+JOIN keystat ON multi.symbol = keystat.symbol
+GROUP BY 1;
+
+
+
+--KEY STATISTICS + variance + median
+SELECT keystat.*, multi.symbol, ROUND(AVG((multi.price - keystat.avgp) * (multi.price - keystat.avgp)), 2) AS var, multi2.median 
+FROM multi
+JOIN keystat ON multi.symbol = keystat.symbol
+JOIN (SELECT symbol, ROUND(AVG(price), 2) AS median
+FROM (SELECT symbol, price
+	FROM coinbase
+	ORDER BY price
+	LIMIT 2 - (SELECT COUNT(*) FROM coinbase) % 2
+	OFFSET (SELECT (COUNT(*) - 1) / 2
+		FROM coinbase))
+UNION 
+SELECT symbol, ROUND(AVG(price), 2) AS median
+FROM (SELECT symbol, price
+	FROM marathon
+	ORDER BY price
+	LIMIT 2 - (SELECT COUNT(*) FROM marathon) % 2
+	OFFSET (SELECT (COUNT(*) - 1) / 2
+		FROM marathon))
+UNION 
+SELECT symbol, ROUND(AVG(price), 2) AS median
+FROM (SELECT symbol, price
+	FROM microstrategy
+	ORDER BY price
+	LIMIT 2 - (SELECT COUNT(*) FROM microstrategy) % 2
+	OFFSET (SELECT (COUNT(*) - 1) / 2
+		FROM microstrategy))
+UNION 
+SELECT symbol, ROUND(AVG(price), 2) AS median
+FROM (SELECT symbol, price
+	FROM riotplatforms
+	ORDER BY price
+	LIMIT 2 - (SELECT COUNT(*) FROM riotplatforms) % 2
+	OFFSET (SELECT (COUNT(*) - 1) / 2
+		FROM riotplatforms))
+UNION 
+SELECT symbol, ROUND(AVG(price), 2) AS median
+FROM (SELECT symbol, price
+	FROM square
+	ORDER BY price
+	LIMIT 2 - (SELECT COUNT(*) FROM square) % 2
+	OFFSET (SELECT (COUNT(*) - 1) / 2
+		FROM square))) AS multi2 ON multi.symbol = multi2.symbol
+GROUP BY 1
