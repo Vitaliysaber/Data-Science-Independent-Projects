@@ -1,0 +1,118 @@
+_1--Which tracks appeared in the most playlists? How many playlist did they appear in?
+SELECT playlist_track.trackId, tracks.Name, COUNT(playlist_track.trackId) AS playlists 
+FROM playlist_track
+JOIN tracks ON playlist_track.trackId = tracks.trackId
+GROUP BY 1
+HAVING playlists = (SELECT COUNT(TrackId) AS a FROM playlist_track GROUP BY trackId ORDER BY a DESC LIMIT 1)
+
+
+
+_2--Which track generated the most revenue? which album? which genre?
+SELECT invoice_items.TrackId AS TrackId, tracks.Name, SUM(invoice_items.UnitPrice) AS sales 
+FROM invoice_items
+JOIN tracks ON invoice_items.trackId = tracks.trackId
+GROUP BY 1
+HAVING sales = (SELECT UnitPrice FROM invoice_items GROUP BY TrackId ORDER BY 1 DESC LIMIT 1)
+
+SELECT tracks.AlbumId, albums.Title, IFNULL(SUM(a.sales),0) AS sales
+FROM (SELECT invoice_items.TrackId AS TrackId, tracks.Name, SUM(invoice_items.UnitPrice) AS sales 
+FROM invoice_items
+JOIN tracks ON invoice_items.trackId = tracks.trackId
+GROUP BY 1) a
+RIGHT JOIN tracks ON a.TrackId = tracks.TrackId
+JOIN albums ON tracks.AlbumId = albums.AlbumId
+GROUP BY 1
+ORDER BY 3 DESC
+LIMIT 1
+
+SELECT tracks.GenreId, genres.Name, IFNULL(SUM(a.sales),0) AS sales
+FROM (SELECT invoice_items.TrackId AS TrackId, tracks.Name, SUM(invoice_items.UnitPrice) AS sales 
+FROM invoice_items
+JOIN tracks ON invoice_items.trackId = tracks.trackId
+GROUP BY 1) a
+RIGHT JOIN tracks ON a.TrackId = tracks.TrackId
+JOIN genres ON tracks.Genreid = genres.GenreId
+GROUP BY 1
+ORDER BY 3 DESC
+LIMIT 1
+
+
+
+_3--Which countries have the highest sales revenue? What percent of total revenue does each country make up?
+
+SELECT BillingCountry, SUM(Total) AS sales
+FROM invoices
+GROUP BY 1
+ORDER BY 2 DESC
+LIMIT 5;
+
+
+SELECT BillingCountry, SUM(Total) AS sales, ROUND(SUM(Total)/(SELECT SUM(Total) FROM invoices), 4) * 100 AS '% from total'
+FROM invoices
+GROUP BY 1
+ORDER BY 2 DESC;
+
+
+_4--How many customers did each employee support, what is the average revenue for each sale, and what is their total sale?
+
+SELECT customers.SupportRepId, employees.FirstName || ' ' || employees.LastName AS name, COUNT(customers.CustomerId) AS customers, ROUND(SUM(a.sales)/SUM(a.num_sales), 2) AS 'avg_revenue/sale', SUM(a.sales) AS sales
+FROM customers 
+JOIN employees ON customers.SupportRepId = employees.EmployeeId
+JOIN (SELECT CustomerId, SUM(Total) AS sales, COUNT(InvoiceId) AS num_sales
+FROM invoices 
+GROUP BY 1) AS a ON customers.CustomerId = a.CustomerId
+GROUP BY 1;
+
+
+
+_1I--Do longer or shorter length albums tend to generate more revenue?
+
+WITH aa AS ( 
+	SELECT tracks.AlbumId, COUNT(tracks.TrackId) AS length, a.sales
+	FROM tracks
+	JOIN (
+		SELECT tracks.AlbumId AS AlbumId, SUM(a.sales) AS sales
+		FROM (SELECT tracks.TrackId AS TrackId, tracks.Name, IFNULL(SUM(invoice_items.UnitPrice),0) AS sales 
+		FROM invoice_items
+		RIGHT JOIN tracks ON invoice_items.trackId = tracks.trackId
+		GROUP BY 1) a
+		JOIN tracks ON a.TrackId = tracks.TrackId
+		GROUP BY 1
+		) a ON tracks.AlbumId = a.AlbumId
+	GROUP BY 1)
+SELECT length, ROUND(AVG(sales), 2) AS avg_sales
+FROM aa
+GROUP BY 1
+ORDER BY 2 DESC;
+
+
+
+_2I--Is the number of times a track appear in any playlist a good indicator of sales?
+
+WITH aa AS (
+	SELECT playlist_track.TrackId, COUNT(playlist_track.PlaylistId) AS counts, a.sales AS sales
+	FROM playlist_track 
+	JOIN playlists ON playlist_track.PlaylistId = playlists.PlaylistId
+	JOIN (SELECT tracks.TrackId AS TrackId, IFNULL(SUM(invoice_items.UnitPrice),0) AS sales 
+		FROM invoice_items
+		RIGHT JOIN tracks ON invoice_items.trackId = tracks.trackId
+		GROUP BY 1) a ON playlist_track.TrackId = a.TrackId
+	GROUP BY 1
+	)
+SELECT counts AS 'Appears tracks in playlists', SUM(sales)
+FROM aa
+GROUP BY 1
+ORDER BY 2 DESC;
+
+
+
+
+_A--How much revenue is generated each year, and what is its percent change from the previous year?
+
+WITH inv AS (
+	SELECT CAST(STRFTIME('%Y', InvoiceDate) AS INT) AS InvoiceDate, SUM(Total) AS revenue FROM invoices GROUP BY 1)
+SELECT curr.InvoiceDate AS year, ROUND(((curr.revenue - prev.revenue)/prev.revenue)*100, 1) || '%' AS 'YOY Change'
+FROM inv AS curr
+JOIN inv AS prev ON curr.InvoiceDate = prev.InvoiceDate + 1;
+
+
